@@ -1,0 +1,16 @@
+png("plot_ex5.png",width = 600)
+set.seed(1)
+x <- rnorm(300,mean = 8,sd = 2)
+e <- rnorm(300,mean = 0,sd = 15)
+y <- 100 - 6*x + e
+median.x <- median(x)
+print(median.x)
+median.y <- median(y)
+print(median.y)
+layout(matrix(c(1,2,2,1,2,2,3,4,4),nrow = 3,byrow = T))
+boxplot(y,pch = 20,cex = 1,col = "red")
+plot(x,y,abline(v = median.x,h = median.y,lty = 1),pch = 20,cex = 2,col = "red")
+plot(x,y,xlab = "",ylab = "",axes  = F,col = "white")
+boxplot(x,pch = 20,cex = 1,horizontal = T,col = "red")
+dev.off()
+
