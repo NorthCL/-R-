@@ -1,0 +1,276 @@
+---
+title: "Упражнение 8"
+author: "Ямпольский Антон"
+date: "12 05 2021"
+output: html_document
+---
+
+# Задание:
+
+Построить две модели для прогноза на основе дерева решений:
+
+1. для непрерывной зависимой переменной;
+2. для категориальной зависимой переменной.
+
+Данные и переменные указаны в таблице с вариантами.
+Ядро генератора случайных чисел – номер варианта.
+
+Для каждой модели:
+
+1. Указать настроечные параметры метода из своего варианта (например: количество узлов, количество предикторов, скорость обучения).
+2. Подогнать модель на обучающей выборке (50% наблюдений). Рассчитать MSE на тестовой выборке.
+3. Перестроить модель с помощью метода, указанного в варианте.
+4. Сделать прогноз по модели с подобранными в п.3 параметрами на тестовой выборке, оценить его точность и построить график «прогноз-реализация».
+
+# Вариант 29(9)
+
+```{r setup, include=FALSE}
+library('tree')              # деревья tree()
+library('ISLR')              # набор данных Carseats
+library('GGally')            # матричный график разброса ggpairs()
+#library('MASS')              # набор данных Boston
+library('randomForest')      # случайный лес randomForest()
+library('gbm')               # бустинг gbm()
+library('class')
+data(Auto)
+
+# Ядро генератора случайных чисел
+my.seed <- 29
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Название столбцов переменных
+names(Auto)
+# Размерность данных
+dim(Auto)
+```
+
+# Модель 1 (для непрерывной зависимой переменной mpg)
+
+```{r}
+# Избавляемся от Name
+Auto <- Auto[, -9]
+
+# ?Auto
+head(Auto)
+```
+
+```{r}
+# Матричные графики разброса переменных
+p <- ggpairs(Auto[, c(1, 2:3)])
+suppressMessages(print(p))
+
+p <- ggpairs(Auto[, c(1, 4:5)])
+suppressMessages(print(p))
+
+p <- ggpairs(Auto[, c(1, 6:8)])
+suppressMessages(print(p))
+```
+
+```{r}
+# Обучающая выборка
+set.seed(my.seed)
+# Обучающая выборка - 50%
+train <- sample(1:nrow(Auto), nrow(Auto)/2)
+```
+
+Построим дерево регрессии для зависимой переменной mpg: миль на галлон.
+
+```{r}
+# Обучаем модель
+tree.auto <- tree(mpg ~ ., Auto, subset = train)
+summary(tree.auto)
+
+# Визуализация
+plot(tree.auto)
+text(tree.auto, pretty = 0)
+
+tree.auto                    # Посмотреть всё дерево в консоли
+```
+
+```{r}
+# Прогноз по модели 
+yhat <- predict(tree.auto, newdata = Auto[-train, ])
+auto.test <- Auto[-train, "mpg"]
+
+# MSE на тестовой выборке
+mse.test <- mean((yhat - auto.test)^2)
+names(mse.test)[length(mse.test)] <- 'Auto.regr.tree.all'
+mse.test
+
+# Точность прогноза на тестовой выборке
+acc.test <- sum(abs(yhat-auto.test))/sum(auto.test)
+names(acc.test)[length(acc.test)] <- 'Auto.regr.tree.all'
+acc.test
+```
+
+```{r}
+# обрезка дерева
+cv.auto <- cv.tree(tree.auto)
+
+# размер дерева с минимальной ошибкой
+plot(cv.auto$size, cv.auto$dev, type = 'b')
+opt.size <- cv.auto$size[cv.auto$dev == min(cv.auto$dev)]
+abline(v = opt.size, col = 'red', 'lwd' = 2)     # соотв. вертикальная прямая
+mtext(opt.size, at = opt.size, side = 1, col = 'red', line = 1)
+
+abline(v = 6, col = 'red', 'lwd' = 2, lty=2)     # соотв. вертикальная прямая
+mtext(6, at = 6, side = 1, col = 'red', line = 1)
+```
+В данном случаем минимум ошибки соответствует самому сложному дереву, с 8 узлами. Покажем, как при желании можно обрезать дерево до 6 узлов (ошибка ненамного выше, чем минимальная).
+
+# Обрезка деревьев
+
+
+Загрузим таблицу с данными по параметрам автомобилей и добавим к ней переменную high.mpg – “высокий расход топлива” со значениями:
+
+1, если mpg >= 29
+0, если mpg < 29
+
+```{r}
+# новая переменная
+high.mpg <- ifelse(Auto$mpg >= 29, 1, 0)
+high.mpg <- factor(high.mpg, labels = c('yes', 'no'))
+Auto$high.mpg <- high.mpg 
+# матричные графики разброса переменных
+p <- ggpairs(Auto[, c(9, 1:5)], aes(color = high.mpg))
+suppressMessages(print(p))
+
+p <- ggpairs(Auto[, c(9, 6:8)], aes(color = high.mpg))
+suppressMessages(print(p))
+```
+
+```{r}
+# модель бинарного  дерева без переменных mpg и name
+tree.auto <- tree(high.mpg ~ .-mpg, Auto)
+summary(tree.auto)
+```
+
+```{r}
+# график результата:
+# ветви
+plot(tree.auto)
+# добавим подписи
+text(tree.auto, pretty = 0)
+# посмотреть всё дерево в консоли
+tree.auto
+```
+
+Теперь построим дерево на обучающей выборке и оценим ошибку на тестовой.
+
+```{r}
+# ядро генератора случайных чисел по номеру варианта
+
+set.seed(my.seed)
+
+# обучающая выборка 50%
+train <- sample(1:nrow(Auto), 200) #nrow(Auto)*0.5 - даёт слишком мало узлов
+
+# тестовая выборка
+auto.test <- Auto[-train,]
+high.mpg.test <- high.mpg[-train]
+
+# строим дерево на обучающей выборке
+tree.auto <- tree(high.mpg ~ .-mpg, Auto, subset = train)
+summary(tree.auto)
+```
+
+```{r}
+# делаем прогноз
+tree.pred <- predict(tree.auto, auto.test, type = "class")
+
+# матрица неточностей
+tbl <- table(tree.pred, high.mpg.test)
+tbl
+# ACC на тестовой
+acc.test <- sum(diag(tbl))/sum(tbl)
+names(acc.test)[length(acc.test)] <- 'Auto.class.tree.all'
+acc.test
+```
+
+Обобщённая характеристика точности: доля верных прогнозов: 0,922
+
+Теперь обрезаем дерево, используя в качестве критерия частоту ошибок классификации. Функция cv.tree() проводит кросс-валидацию для выбора лучшего дерева, аргумент prune.misclass означает, что мы минимизируем ошибку классификации.
+
+```{r}
+set.seed(my.seed)
+cv.auto <- cv.tree(tree.auto, FUN = prune.misclass)
+# имена элементов полученного объекта
+names(cv.auto)
+# сам объект
+cv.auto
+```
+
+Графики изменения параметров метода по ходу обрезки дерева
+
+```{r}
+# 1. ошибка с кросс-валидацией в зависимости от числа узлов
+par(mfrow = c(1, 2))
+plot(cv.auto$size, cv.auto$dev, type = "b",
+     ylab = 'Частота ошибок с кросс-вал. (dev)',
+     xlab = 'Число узлов (size)')
+# размер дерева с минимальной ошибкой
+opt.size <- cv.auto$size[cv.auto$dev == min(cv.auto$dev)]
+abline(v = opt.size, col = 'red', 'lwd' = 2)     # соотв. вертикальная прямая
+mtext(opt.size, at = opt.size, side = 1, col = 'red', line = 1)
+
+# 2. ошибка с кросс-валидацией в зависимости от штрафа на сложность
+plot(cv.auto$k, cv.auto$dev, type = "b",
+     ylab = 'Частота ошибок с кросс-вал. (dev)',
+     xlab = 'Штраф за сложность (k)')
+```
+
+Как видно на графике слева, минимум частоты ошибок достигается при числе узлов 6.
+
+Оценим точность дерева с 6 узлами.
+
+```{r}
+# дерево с 6 узлами
+prune.auto <- prune.misclass(tree.auto, best = 6)
+
+# визуализация
+plot(prune.auto)
+text(prune.auto, pretty = 0)
+```
+
+```{r}
+# прогноз на тестовую выборку
+tree.pred <- predict(prune.auto, auto.test, type = "class")
+
+# матрица неточностей
+tbl <- table(tree.pred, high.mpg.test)
+tbl
+# ACC на тестовой
+acc.test <- c(acc.test, sum(diag(tbl))/sum(tbl))
+names(acc.test)[length(acc.test)] <- 'Auto.class.tree.6'
+acc.test
+```
+
+Точность этой модели не изменилась и составляет 0,922.
+
+Увеличив количество узлов, получим точно такое же дерево:
+
+```{r}
+# дерево с 7 узлами
+prune.auto <- prune.misclass(tree.auto, best = 7)
+
+# визуализация
+plot(prune.auto)
+text(prune.auto, pretty = 0)
+```
+
+```{r}
+# прогноз на тестовую выборку
+tree.pred <- predict(prune.auto, auto.test, type = "class")
+
+# матрица неточностей
+tbl <- table(tree.pred, high.mpg.test)
+tbl
+# ACC на тестовой
+acc.test <- c(acc.test, sum(diag(tbl))/sum(tbl))
+names(acc.test)[length(acc.test)] <- 'Carseats.class.tree.7'
+acc.test
+```
+
